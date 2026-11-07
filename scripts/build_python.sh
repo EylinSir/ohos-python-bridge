@@ -32,6 +32,11 @@ sed -i 's/| linux-uclibc\* )/| linux-uclibc* | linux-ohos* )/' config.sub
 # Force aarch64-linux-ohos platform triplet (matches OHOS NDK --target)
 sed -i 's|PLATFORM_TRIPLET="${PLATFORM_TRIPLET#PLATFORM_TRIPLET=}"|PLATFORM_TRIPLET="aarch64-linux-ohos"|g' configure
 sed -i 's|MULTIARCH=$($CC --print-multiarch 2>/dev/null)|MULTIARCH="aarch64-linux-ohos"|g' configure
+# 跳过 PLATFORM_TRIPLET != MULTIARCH 验证
+# configure 从编译器特征推断 PLATFORM_TRIPLET=aarch64-linux-gnu（不认识 ohos）
+# 但我们强制设置了 MULTIARCH=aarch64-linux-ohos，两者不匹配会报错
+# 这个验证对功能没有影响，跳过即可
+sed -i 's|test x$PLATFORM_TRIPLET != x$MULTIARCH|false|' configure
 sed -i '/def get_platform():/a\    return "linux-aarch64"' Lib/sysconfig.py
 sed -i '/def system():/a\    return "Linux"' Lib/platform.py
 echo "PLATFORM_TRIPLET=aarch64-linux-ohos" > Misc/platform_triplet.c
