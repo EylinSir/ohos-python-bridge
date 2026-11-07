@@ -29,6 +29,9 @@ sed -i '/def get_platform():/a\    return "linux-aarch64"' Lib/sysconfig.py
 sed -i '/def system():/a\    return "Linux"' Lib/platform.py
 echo "PLATFORM_TRIPLET=aarch64-linux-gnu" > Misc/platform_triplet.c
 
+# Create host-prefixed readelf symlink for cross-compile detection
+ln -sf /bin/llvm-readelf /usr/local/bin/aarch64-linux-gnu-readelf
+
 # Configure with cross-compiling support
 ./configure \
     --build=x86_64-linux-gnu \
@@ -49,6 +52,7 @@ echo "PLATFORM_TRIPLET=aarch64-linux-gnu" > Misc/platform_triplet.c
     AR=/bin/llvm-ar \
     RANLIB=/bin/llvm-ranlib \
     LD=/bin/ld.lld \
+    READELF=/bin/llvm-readelf \
     CFLAGS="$CFLAGS -DNO_GETTEXT"
 
 # Patch _localemodule.c: provide gettext stubs (libintl not available)
