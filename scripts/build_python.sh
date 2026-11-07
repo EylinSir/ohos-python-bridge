@@ -7,10 +7,9 @@ WORKDIR=${GITHUB_WORKSPACE:-/home/runner/work/ohos-python-builder/ohos-python-bu
 PREFIX=/opt/python-3.11.9-ohos-arm64
 BUILD_PYTHON=${BUILD_PYTHON:-$(which python3)}
 
-if [ -f $PREFIX/bin/python3.11 ]; then
-    echo "=== Python already built, skipping ==="
-    exit 0
-fi
+# Always rebuild Python to pick up newly built deps
+rm -rf $PREFIX
+echo "=== Building Python (forced rebuild) ==="
 
 cd $WORKDIR/deps 2>/dev/null || { mkdir -p $WORKDIR/deps && cd $WORKDIR/deps; }
 
@@ -92,6 +91,17 @@ else
     # Also remove from Makefile
     sed -i '/_ctypes/d' Makefile 2>/dev/null || true
 fi
+
+# Fix _socket: OHOS SDK sysroot lacks CAN_RAW_FD_FRAMES/CAN_RAW_JOIN_FILTERS
+cat > /tmp/can_raw_fix.h << 'EOF'
+#ifndef CAN_RAW_FD_FRAMES
+#define CAN_RAW_FD_FRAMES 1
+#endif
+#ifndef CAN_RAW_JOIN_FILTERS
+#define CAN_RAW_JOIN_FILTERS 6
+#endif
+EOF
+sed -i '1i\#include "/tmp/can_raw_fix.h"' Modules/socketmodule.c
 
 # Disable checksharedmods (fails in cross compile)
 sed -i 's/checksharedmods:/checksharedmods_disabled:/' Makefile
