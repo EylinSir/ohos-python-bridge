@@ -3,7 +3,7 @@
 set -ex
 
 DEPS_DIR=/opt/deps
-WORKDIR=/home/runner/work/ohos-python-builder/ohos-python-builder
+WORKDIR=${GITHUB_WORKSPACE:-/home/runner/work/ohos-python-builder/ohos-python-builder}
 PREFIX=/opt/python-3.11.9-ohos-arm64
 BUILD_PYTHON=${BUILD_PYTHON:-$(which python3)}
 
