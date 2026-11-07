@@ -25,7 +25,7 @@ cd Python-3.11.9
 # Force aarch64-linux-musl platform triplet (reuse musl pip packages)
 sed -i 's|PLATFORM_TRIPLET="${PLATFORM_TRIPLET#PLATFORM_TRIPLET=}"|PLATFORM_TRIPLET="aarch64-linux-musl"|g' configure
 sed -i 's|MULTIARCH=$($CC --print-multiarch 2>/dev/null)|MULTIARCH="aarch64-linux-musl"|g' configure
-sed -i '/def get_platform():/a\    return "linux-aarch64"' Lib/sysconfig/__init__.py
+sed -i '/def get_platform():/a\    return "linux-aarch64"' Lib/sysconfig.py
 sed -i '/def system():/a\    return "Linux"' Lib/platform.py
 echo "PLATFORM_TRIPLET=aarch64-linux-musl" > Misc/platform_triplet.c
 
