@@ -21,6 +21,10 @@ fi
 
 cd Python-3.11.9
 
+# Patch config.sub to recognize 'ohos' as a valid OS (OHOS is Linux-based)
+# Python 源码自带的 config.sub 版本太旧，不认识 ohos 操作系统
+sed -i 's/-linux\*/-linux* | -ohos*/g' config.sub
+
 # Force aarch64-linux-ohos platform triplet (matches OHOS NDK --target)
 sed -i 's|PLATFORM_TRIPLET="${PLATFORM_TRIPLET#PLATFORM_TRIPLET=}"|PLATFORM_TRIPLET="aarch64-linux-ohos"|g' configure
 sed -i 's|MULTIARCH=$($CC --print-multiarch 2>/dev/null)|MULTIARCH="aarch64-linux-ohos"|g' configure
