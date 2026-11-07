@@ -1,0 +1,212 @@
+name: Build Python for OHOS ARM64 (Incremental)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout build scripts
+        uses: actions/checkout@v4
+
+      - name: Install Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # === Download previous deps artifact (if exists) ===
+      - name: Download previous deps
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ohos-deps
+          path: /tmp/ohos-deps
+
+      - name: Restore deps from artifact
+        run: |
+          if [ -f /tmp/ohos-deps/deps.tar.gz ]; then
+            echo "=== Restoring deps from artifact ==="
+            sudo mkdir -p /opt/deps
+            sudo tar -xzf /tmp/ohos-deps/deps.tar.gz -C /opt/
+            echo "=== Restored ==="
+            ls /opt/deps/lib/*.so* 2>/dev/null | head -20
+          else
+            echo "=== No previous artifact, building from scratch ==="
+          fi
+
+      - name: Setup SDK and compilers
+        run: |
+          set -ex
+          if [ -f /opt/ohos-sdk/linux/native/llvm/bin/clang ]; then
+            echo "=== SDK already cached, skipping download ==="
+          else
+            curl -fL -o ohos-sdk.tar.gz https://repo.huaweicloud.com/openharmony/os/7.0-Release/ohos-sdk-windows_linux-public_20260829.tar.gz
+            tar -zxf ohos-sdk.tar.gz
+            rm -rf ohos-sdk.tar.gz
+            cd ohos-sdk/linux
+            unzip -q native-linux-x64-*.zip
+            unzip -q toolchains-linux-x64-*.zip
+            rm -rf *.zip
+            cd -
+            sudo mkdir -p /opt/ohos-sdk
+            sudo cp -r ohos-sdk/linux /opt/ohos-sdk/linux
+          fi
+          
+          echo '#!/bin/sh' | sudo tee /bin/clang
+          echo 'exec /opt/ohos-sdk/linux/native/llvm/bin/clang --target=aarch64-linux-ohos --sysroot=/opt/ohos-sdk/linux/native/sysroot "$@"' | sudo tee -a /bin/clang
+          sudo chmod 0755 /bin/clang
+          echo '#!/bin/sh' | sudo tee /bin/clang++
+          echo 'exec /opt/ohos-sdk/linux/native/llvm/bin/clang --target=aarch64-linux-ohos --sysroot=/opt/ohos-sdk/linux/native/sysroot "$@"' | sudo tee -a /bin/clang++
+          sudo chmod 0755 /bin/clang++
+          for tool in ld.lld llvm-ar llvm-ranlib llvm-nm llvm-objcopy llvm-objdump llvm-readelf llvm-strip llvm-addr2line llvm-cxxfilt llvm-size llvm-strings; do
+              echo '#!/bin/sh' | sudo tee /bin/$tool
+              echo "exec /opt/ohos-sdk/linux/native/llvm/bin/$tool \"\$@\"" | sudo tee -a /bin/$tool
+              sudo chmod 0755 /bin/$tool
+          done
+          echo '#!/bin/sh' | sudo tee /bin/strip
+          echo 'exec /opt/ohos-sdk/linux/native/llvm/bin/llvm-strip "$@"' | sudo tee -a /bin/strip
+          sudo chmod 0755 /bin/strip
+
+      - name: Set environment
+        run: |
+          echo "CFLAGS=-fPIC -std=gnu11 -D__aarch64__ -D__ARM_ARCH=8 -D__ARM_ARCH_8A__" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/opt/deps/include -D__MUSL__" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/opt/deps/lib" >> $GITHUB_ENV
+          echo "CC=/bin/clang" >> $GITHUB_ENV
+          echo "CXX=/bin/clang++" >> $GITHUB_ENV
+          echo "AR=/bin/llvm-ar" >> $GITHUB_ENV
+          echo "RANLIB=/bin/llvm-ranlib" >> $GITHUB_ENV
+          echo "LD=/bin/ld.lld" >> $GITHUB_ENV
+          echo "STRIP=/bin/strip" >> $GITHUB_ENV
+          echo "CHOST=aarch64-linux-gnu" >> $GITHUB_ENV
+          echo "BUILD_PYTHON=$(which python3)" >> $GITHUB_ENV
+
+      # === PRIORITY: Python first (fail fast) ===
+      - name: Build Python
+        id: python
+        run: sudo -E bash scripts/build_python.sh
+
+      # === Already succeeded - will auto-skip from artifact ===
+      - name: Build sqlite
+        id: sqlite
+        continue-on-error: true
+        run: sudo -E bash scripts/build_sqlite.sh
+
+      - name: Build OpenSSL
+        id: openssl
+        continue-on-error: true
+        run: sudo -E bash scripts/build_openssl.sh
+
+      - name: Build zlib
+        id: zlib
+        continue-on-error: true
+        run: sudo -E bash scripts/build_zlib.sh
+
+      - name: Build libffi
+        id: libffi
+        continue-on-error: true
+        run: sudo -E bash scripts/build_libffi.sh
+
+      - name: Build libuuid
+        id: libuuid
+        continue-on-error: true
+        run: sudo -E bash scripts/build_libuuid.sh
+
+      - name: Build liblzma (xz)
+        id: xz
+        continue-on-error: true
+        run: sudo -E bash scripts/build_xz.sh
+
+      - name: Build bzip2
+        id: bzip2
+        continue-on-error: true
+        run: sudo -E bash scripts/build_bzip2.sh
+
+      - name: Build zstd
+        id: zstd
+        continue-on-error: true
+        run: sudo -E bash scripts/build_zstd.sh
+
+      - name: Build ncurses
+        id: ncurses
+        continue-on-error: true
+        run: sudo -E bash scripts/build_ncurses.sh
+
+      - name: Build readline
+        id: readline
+        continue-on-error: true
+        run: sudo -E bash scripts/build_readline.sh
+
+      - name: Build gdbm
+        id: gdbm
+        continue-on-error: true
+        run: sudo -E bash scripts/build_gdbm.sh
+
+      # === Upload deps artifact (always, even if some failed) ===
+      - name: Pack deps for artifact
+        if: always()
+        run: |
+          sudo chmod -R a+rX /opt/deps 2>/dev/null || true
+          cd /opt
+          tar -czf /tmp/deps.tar.gz deps/
+          ls -lh /tmp/deps.tar.gz
+
+      - name: Upload deps artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-deps
+          path: /tmp/deps.tar.gz
+          retention-days: 30
+
+      # === Check results ===
+      - name: Check results
+        if: always()
+        run: |
+          echo "=== Build Results ==="
+          echo "OpenSSL: ${{ steps.openssl.outcome }}"
+          echo "zlib: ${{ steps.zlib.outcome }}"
+          echo "libffi: ${{ steps.libffi.outcome }}"
+          echo "libuuid: ${{ steps.libuuid.outcome }}"
+          echo "xz: ${{ steps.xz.outcome }}"
+          echo "bzip2: ${{ steps.bzip2.outcome }}"
+          echo "zstd: ${{ steps.zstd.outcome }}"
+          echo "ncurses: ${{ steps.ncurses.outcome }}"
+          echo "readline: ${{ steps.readline.outcome }}"
+          echo "gdbm: ${{ steps.gdbm.outcome }}"
+          echo "sqlite: ${{ steps.sqlite.outcome }}"
+          echo "Python: ${{ steps.python.outcome }}"
+          echo ""
+          echo "=== Deps check ==="
+          ls -la /opt/deps/lib/*.so* 2>/dev/null || echo "No deps libs"
+          ls -la /opt/python-3.11.9-ohos-arm64/bin/python3* 2>/dev/null || echo "No python binary"
+
+      # === Package if Python binary exists ===
+      - name: Package
+        if: always()
+        run: |
+          if [ ! -f /opt/python-3.11.9-ohos-arm64/bin/python3.11 ]; then
+            echo "Python not built, skipping package"
+            exit 0
+          fi
+          MISSING=""
+          for lib in libssl.so libz.so libffi.so libuuid.so liblzma.so libbz2.so libzstd.so libncursesw.so libreadline.so libgdbm.so libsqlite3.so; do
+            if [ ! -f /opt/deps/lib/$lib ]; then
+              MISSING="$MISSING $lib"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "Missing:$MISSING"
+            exit 0
+          fi
+          sudo -E bash scripts/package.sh
+
+      - name: Upload final artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-ohos-shared
+          path: python-3.11.9-ohos-arm64.tar.gz
+          retention-days: 30
