@@ -46,7 +46,9 @@ ln -sf /bin/llvm-readelf /usr/local/bin/aarch64-linux-gnu-readelf
     ac_cv_file__dev_ptmx=yes \
     ac_cv_file__dev_ptc=no \
     ac_cv_buggy_getaddrinfo=no \
+    ac_cv_header_linux_socket_h=no \
     LDFLAGS="-L$DEPS_DIR/lib -Wl,-rpath,'\$\$ORIGIN/../lib' -Wl,-rpath,'\$\$ORIGIN/../../../lib'" \
+    CPPFLAGS="-I$DEPS_DIR/include" \
     CC=/bin/clang \
     CXX=/bin/clang++ \
     AR=/bin/llvm-ar \
