@@ -80,7 +80,7 @@ jobs:
           echo "RANLIB=/bin/llvm-ranlib" >> $GITHUB_ENV
           echo "LD=/bin/ld.lld" >> $GITHUB_ENV
           echo "STRIP=/bin/strip" >> $GITHUB_ENV
-          echo "CHOST=aarch64-linux-gnu" >> $GITHUB_ENV
+          echo "CHOST=aarch64-linux-ohos" >> $GITHUB_ENV
           echo "BUILD_PYTHON=$(which python3)" >> $GITHUB_ENV
 
       # === Build dependencies FIRST (Python needs headers at configure time) ===

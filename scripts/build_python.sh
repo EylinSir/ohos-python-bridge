@@ -21,20 +21,21 @@ fi
 
 cd Python-3.11.9
 
-# Force aarch64-linux-gnu platform triplet (matches compiler detection)
-sed -i 's|PLATFORM_TRIPLET="${PLATFORM_TRIPLET#PLATFORM_TRIPLET=}"|PLATFORM_TRIPLET="aarch64-linux-gnu"|g' configure
-sed -i 's|MULTIARCH=$($CC --print-multiarch 2>/dev/null)|MULTIARCH="aarch64-linux-gnu"|g' configure
+# Force aarch64-linux-ohos platform triplet (matches OHOS NDK --target)
+sed -i 's|PLATFORM_TRIPLET="${PLATFORM_TRIPLET#PLATFORM_TRIPLET=}"|PLATFORM_TRIPLET="aarch64-linux-ohos"|g' configure
+sed -i 's|MULTIARCH=$($CC --print-multiarch 2>/dev/null)|MULTIARCH="aarch64-linux-ohos"|g' configure
 sed -i '/def get_platform():/a\    return "linux-aarch64"' Lib/sysconfig.py
 sed -i '/def system():/a\    return "Linux"' Lib/platform.py
-echo "PLATFORM_TRIPLET=aarch64-linux-gnu" > Misc/platform_triplet.c
+echo "PLATFORM_TRIPLET=aarch64-linux-ohos" > Misc/platform_triplet.c
 
 # Create host-prefixed readelf symlink for cross-compile detection
-ln -sf /bin/llvm-readelf /usr/local/bin/aarch64-linux-gnu-readelf
+ln -sf /bin/llvm-readelf /usr/local/bin/aarch64-linux-ohos-readelf
+ln -sf /bin/llvm-readelf /usr/local/bin/aarch64-linux-gnu-readelf  # fallback
 
 # Configure with cross-compiling support
 ./configure \
     --build=x86_64-linux-gnu \
-    --host=aarch64-linux-gnu \
+    --host=aarch64-linux-ohos \
     --prefix=$PREFIX \
     --with-openssl=$DEPS_DIR \
     --disable-ipv6 \
@@ -106,8 +107,47 @@ sed -i '1i\#include "/tmp/can_raw_fix.h"' Modules/socketmodule.c
 # Disable checksharedmods (fails in cross compile)
 sed -i 's/checksharedmods:/checksharedmods_disabled:/' Makefile
 
+# 让 C 扩展模块显式链接 libpython3.11.so（OHOS 命名空间隔离要求）
+# 默认 Python 构建中 C 扩展不链接 libpython，依赖运行时符号解析
+# 但 OHOS 动态链接命名空间隔离阻止了这种方式
+sed -i '/^LDSHARED=/s/$/ -L. -lpython3.11/' Makefile
+sed -i '/^BLDSHARED=/s/$/ -L. -lpython3.11/' Makefile
+
 make -j$(nproc)
 make install
+
+# 修改 SONAME：将 libpython3.11.so.1.0 改为 libpython3.11.so
+# OHOS 命名空间隔离下，带版本号的 SONAME 会导致加载失败
+echo "=== Fixing SONAME ==="
+
+# 安装 patchelf
+apt-get install -y patchelf 2>/dev/null || true
+
+# 修改 libpython3.11.so 的 SONAME
+if command -v patchelf >/dev/null 2>&1; then
+    for sofile in $PREFIX/lib/libpython3.11.so*; do
+        if [ -f "$sofile" ]; then
+            patchelf --set-soname libpython3.11.so "$sofile" 2>/dev/null || true
+        fi
+    done
+    # 修改 C 扩展模块的 NEEDED（从 libpython3.11.so.1.0 改为 libpython3.11.so）
+    for sofile in $PREFIX/lib/python3.11/lib-dynload/*.so; do
+        if [ -f "$sofile" ]; then
+            patchelf --replace-needed libpython3.11.so.1.0 libpython3.11.so "$sofile" 2>/dev/null || true
+        fi
+    done
+fi
+
+# 删除带版本号的符号链接/副本，只保留 libpython3.11.so
+rm -f $PREFIX/lib/libpython3.11.so.1.0
+rm -f $PREFIX/lib/libpython3.11.so.1
+# 确保 libpython3.11.so 是实际文件（不是符号链接）
+if [ -L $PREFIX/lib/libpython3.11.so ]; then
+    LINK_TARGET=$(readlink -f $PREFIX/lib/libpython3.11.so)
+    cp "$LINK_TARGET" $PREFIX/lib/libpython3.11.so.tmp
+    rm -f $PREFIX/lib/libpython3.11.so
+    mv $PREFIX/lib/libpython3.11.so.tmp $PREFIX/lib/libpython3.11.so
+fi
 
 # Copy dependency libs
 cp /opt/deps/lib/*.so* $PREFIX/lib/ 2>/dev/null || true
